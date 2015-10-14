@@ -108,6 +108,8 @@ void AVNuUtils::addFlagsInMeta(const sp<ABuffer> & /*buffer*/,
         int32_t /*flags*/, bool /*isAudio*/) {
 }
 
+bool AVNuUtils::dropCorruptFrame() { return false; }
+
 // ----- NO TRESSPASSING BEYOND THIS LINE ------
 AVNuUtils::AVNuUtils() {}
 
