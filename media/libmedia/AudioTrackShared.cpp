@@ -38,7 +38,7 @@ size_t clampToSize(T x) {
 // In general, this means (new_self) returned is max(self, other) + 1.
 
 static uint32_t incrementSequence(uint32_t self, uint32_t other) {
-    int32_t diff = self - other;
+    int32_t diff = (int32_t) self - (int32_t) other;
     if (diff >= 0 && diff < INT32_MAX) {
         return self + 1; // we're already ahead of other.
     }
@@ -893,7 +893,7 @@ ssize_t StaticAudioTrackServerProxy::pollPosition()
     if (mObserver.poll(state)) {
         StaticAudioTrackState trystate = mState;
         bool result;
-        const int32_t diffSeq = state.mLoopSequence - state.mPositionSequence;
+        const int32_t diffSeq = (int32_t) state.mLoopSequence - (int32_t) state.mPositionSequence;
 
         if (diffSeq < 0) {
             result = updateStateWithLoop(&trystate, state) == OK &&
@@ -932,7 +932,7 @@ ssize_t StaticAudioTrackServerProxy::pollPosition()
     return (ssize_t) mState.mPosition;
 }
 
-status_t StaticAudioTrackServerProxy::obtainBuffer(Buffer* buffer, bool ackFlush __unused)
+status_t StaticAudioTrackServerProxy::obtainBuffer(Buffer* buffer, bool ackFlush)
 {
     if (mIsShutdown) {
         buffer->mFrameCount = 0;
@@ -970,7 +970,9 @@ status_t StaticAudioTrackServerProxy::obtainBuffer(Buffer* buffer, bool ackFlush
     // it is always larger or equal to avail.
     LOG_ALWAYS_FATAL_IF(mFramesReady < (int64_t) avail);
     buffer->mNonContig = mFramesReady == INT64_MAX ? SIZE_MAX : clampToSize(mFramesReady - avail);
-    mUnreleased = avail;
+    if (!ackFlush) {
+        mUnreleased = avail;
+    }
     return NO_ERROR;
 }
 

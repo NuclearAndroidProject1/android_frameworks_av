@@ -228,6 +228,7 @@ NuPlayer::NuPlayer(pid_t pid)
       mPlaybackSettings(AUDIO_PLAYBACK_RATE_DEFAULT),
       mVideoFpsHint(-1.f),
       mStarted(false),
+      mResetting(false),
       mSourceStarted(false),
       mPaused(false),
       mPausedByClient(false),
@@ -1119,6 +1120,12 @@ void NuPlayer::onMessageReceived(const sp<AMessage> &msg) {
                 int32_t audio;
                 CHECK(msg->findInt32("audio", &audio));
 
+                if (audio) {
+                    mAudioEOS = false;
+                } else {
+                    mVideoEOS = false;
+                }
+
                 ALOGV("renderer %s flush completed.", audio ? "audio" : "video");
                 if (audio && (mFlushingAudio == NONE || mFlushingAudio == FLUSHED
                         || mFlushingAudio == SHUT_DOWN)) {
@@ -1188,6 +1195,8 @@ void NuPlayer::onMessageReceived(const sp<AMessage> &msg) {
         case kWhatReset:
         {
             ALOGV("kWhatReset");
+
+            mResetting = true;
 
             mDeferredActions.push_back(
                     new FlushDecoderAction(
@@ -1274,7 +1283,8 @@ void NuPlayer::onMessageReceived(const sp<AMessage> &msg) {
 }
 
 void NuPlayer::onResume() {
-    if (!mPaused) {
+    if (!mPaused || mResetting) {
+        ALOGD_IF(mResetting, "resetting, onResume discarded");
         return;
     }
     mPaused = false;
@@ -1994,6 +2004,7 @@ void NuPlayer::performReset() {
     }
 
     mStarted = false;
+    mResetting = false;
     mSourceStarted = false;
 }
 
