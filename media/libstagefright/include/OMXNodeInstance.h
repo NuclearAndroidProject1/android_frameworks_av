@@ -145,6 +145,7 @@ private:
     OMX::node_id mNodeID;
     OMX_HANDLETYPE mHandle;
     sp<IOMXObserver> mObserver;
+    atomic_bool mDying;
     bool mIsSecure;
     atomic_bool mDying;
 

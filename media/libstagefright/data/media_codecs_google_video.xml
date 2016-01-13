@@ -16,7 +16,7 @@
 
 <Included>
     <Decoders>
-        <MediaCodec name="OMX.google.mpeg4.decoder">
+       <MediaCodec name="OMX.google.mpeg4.decoder">
             <Type name="video/mp4v-es" />
             <!--
                 Use Google mpeg4 decoder for mpeg4 DP content which is not
