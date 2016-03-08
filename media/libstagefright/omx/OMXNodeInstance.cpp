@@ -207,7 +207,6 @@ OMXNodeInstance::OMXNodeInstance(
     mMetadataType[1] = kMetadataBufferTypeInvalid;
     atomic_store(&mDying, false);
     mIsSecure = AString(name).endsWith(".secure");
-    atomic_store(&mDying, false);
 }
 
 OMXNodeInstance::~OMXNodeInstance() {
@@ -1598,8 +1597,7 @@ void OMXNodeInstance::removeActiveBuffer(
 void OMXNodeInstance::freeActiveBuffers() {
     // Make sure to count down here, as freeBuffer will in turn remove
     // the active buffer from the vector...
-    for (size_t i = mActiveBuffers.size(); i;) {
-        i--;
+    for (size_t i = mActiveBuffers.size(); i--;) {
         freeBuffer(mActiveBuffers[i].mPortIndex, mActiveBuffers[i].mID);
     }
 }

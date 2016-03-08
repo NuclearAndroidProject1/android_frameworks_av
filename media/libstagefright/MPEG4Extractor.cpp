@@ -1853,9 +1853,6 @@ status_t MPEG4Extractor::parseChunk(off64_t *offset, int depth) {
                     }
                 }
             }
-
-            updateVideoTrackInfoFromESDS_MPEG4Video(mLastTrack->meta);
-
             break;
         }
 

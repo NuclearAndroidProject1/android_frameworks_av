@@ -42,8 +42,7 @@ sp<DataURISource> DataURISource::Create(const char *uri) {
         AString encoded(commaPos + 1);
 
         // Strip CR and LF...
-        for (size_t i = encoded.size(); i > 0;) {
-            i--;
+        for (size_t i = encoded.size(); i-- > 0;) {
             if (encoded.c_str()[i] == '\r' || encoded.c_str()[i] == '\n') {
                 encoded.erase(i, 1);
             }

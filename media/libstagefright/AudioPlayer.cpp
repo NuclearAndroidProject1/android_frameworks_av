@@ -820,8 +820,8 @@ int64_t AudioPlayer::getMediaTimeUs() {
     }
 
     int64_t realTimeOffset = getRealTimeUsLocked() - mPositionTimeRealUs;
-    if (mPositionTimeMediaUs + realTimeOffset < 0) {
-        return 0;
+    if (realTimeOffset < 0) {
+        realTimeOffset = 0;
     }
 
     return mPositionTimeMediaUs + realTimeOffset;

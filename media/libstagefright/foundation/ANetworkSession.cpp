@@ -1318,8 +1318,7 @@ void ANetworkSession::threadLoop() {
 
         List<sp<Session> > sessionsToAdd;
 
-        for (size_t i = mSessions.size(); res > 0 && i > 0;) {
-            i--;
+        for (size_t i = mSessions.size(); res > 0 && i-- > 0;) {
             const sp<Session> &session = mSessions.valueAt(i);
 
             int s = session->socket();
@@ -1410,3 +1409,4 @@ void ANetworkSession::threadLoop() {
 }
 
 }  // namespace android
+

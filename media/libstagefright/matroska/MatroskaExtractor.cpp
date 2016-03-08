@@ -846,8 +846,6 @@ static void addESDSFromCodecPrivate(
 
     meta->setData(kKeyESDS, 0, esds, esdsSize);
 
-    updateVideoTrackInfoFromESDS_MPEG4Video(meta);
-
     delete[] esds;
     esds = NULL;
 }

@@ -744,7 +744,7 @@ status_t ACodec::handleSetSurface(const sp<Surface> &surface) {
         if (storingMetadataInDecodedBuffers()
                 && !mLegacyAdaptiveExperiment
                 && info.mStatus == BufferInfo::OWNED_BY_NATIVE_WINDOW) {
-            ALOGV("skipping buffer %p", info.mGraphicBuffer.get() ? info.mGraphicBuffer->getNativeBuffer() : 0x0);
+            ALOGV("skipping buffer %p", info.mGraphicBuffer->getNativeBuffer());
             continue;
         }
         ALOGV("attaching buffer %p", info.mGraphicBuffer->getNativeBuffer());
@@ -933,13 +933,31 @@ status_t ACodec::setupNativeWindowSizeFormatAndUsage(
     *finalUsage = usage;
 
     ALOGV("gralloc usage: %#x(OMX) => %#x(ACodec)", omxUsage, usage);
-    return setNativeWindowSizeFormatAndUsage(
+    err = setNativeWindowSizeFormatAndUsage(
             nativeWindow,
             def.format.video.nFrameWidth,
             def.format.video.nFrameHeight,
             def.format.video.eColorFormat,
             mRotationDegrees,
             usage);
+    if (err == OK) {
+        OMX_CONFIG_RECTTYPE rect;
+        InitOMXParams(&rect);
+        rect.nPortIndex = kPortIndexOutput;
+        err = mOMX->getConfig(
+                mNode, OMX_IndexConfigCommonOutputCrop, &rect, sizeof(rect));
+        if (err == OK) {
+            ALOGV("rect size = %d, %d, %d, %d", rect.nLeft, rect.nTop, rect.nWidth, rect.nHeight);
+            android_native_rect_t crop;
+            crop.left = rect.nLeft;
+            crop.top = rect.nTop;
+            crop.right = rect.nLeft + rect.nWidth - 1;
+            crop.bottom = rect.nTop + rect.nHeight - 1;
+            ALOGV("crop update (%d, %d), (%d, %d)", crop.left, crop.top, crop.right, crop.bottom);
+            err = native_window_set_crop(nativeWindow, &crop);
+        }
+    }
+    return err;
 }
 
 status_t ACodec::configureOutputBuffersFromNativeWindow(
@@ -1351,8 +1369,7 @@ ACodec::BufferInfo *ACodec::dequeueBufferFromNativeWindow() {
         }
 
         bool stale = false;
-        for (size_t i = mBuffers[kPortIndexOutput].size(); i > 0;) {
-            i--;
+        for (size_t i = mBuffers[kPortIndexOutput].size(); i-- > 0;) {
             BufferInfo *info = &mBuffers[kPortIndexOutput].editItemAt(i);
 
             if (info->mGraphicBuffer != NULL &&
@@ -1395,8 +1412,7 @@ ACodec::BufferInfo *ACodec::dequeueBufferFromNativeWindow() {
 
     // get oldest undequeued buffer
     BufferInfo *oldest = NULL;
-    for (size_t i = mBuffers[kPortIndexOutput].size(); i > 0;) {
-        i--;
+    for (size_t i = mBuffers[kPortIndexOutput].size(); i-- > 0;) {
         BufferInfo *info =
             &mBuffers[kPortIndexOutput].editItemAt(i);
         if (info->mStatus == BufferInfo::OWNED_BY_NATIVE_WINDOW &&
@@ -1600,8 +1616,6 @@ status_t ACodec::setComponentRole(
             "audio_decoder.ac3", "audio_encoder.ac3" },
         { MEDIA_MIMETYPE_AUDIO_EAC3,
             "audio_decoder.eac3", "audio_encoder.eac3" },
-        { MEDIA_MIMETYPE_VIDEO_MPEG4_DP,
-            "video_decoder.mpeg4", NULL },
 #ifdef DOLBY_UDC
         { MEDIA_MIMETYPE_AUDIO_EAC3_JOC,
             "audio_decoder.eac3_joc", NULL },
@@ -4487,13 +4501,16 @@ void ACodec::sendFormatChange(const sp<AMessage> &reply) {
                (mEncoderDelay || mEncoderPadding)) {
         int32_t channelCount;
         CHECK(notify->findInt32("channel-count", &channelCount));
+        size_t frameSize = channelCount * sizeof(int16_t);
         if (mSkipCutBuffer != NULL) {
             size_t prevbufsize = mSkipCutBuffer->size();
             if (prevbufsize != 0) {
                 ALOGW("Replacing SkipCutBuffer holding %zu bytes", prevbufsize);
             }
         }
-        mSkipCutBuffer = new SkipCutBuffer(mEncoderDelay, mEncoderPadding, channelCount);
+        mSkipCutBuffer = new SkipCutBuffer(
+                mEncoderDelay * frameSize,
+                mEncoderPadding * frameSize);
     }
 
     getVQZIPInfo(notify);
@@ -5754,79 +5771,8 @@ bool ACodec::LoadedState::onConfigureComponent(
         ALOGE("[%s] configureCodec returning error %d",
               mCodec->mComponentName.c_str(), err);
 
-        int32_t encoder;
-        if (!msg->findInt32("encoder", &encoder)) {
-            encoder = false;
-        }
-
-        if (!encoder && !strncmp(mime.c_str(), "video/", strlen("video/"))) {
-            Vector<OMXCodec::CodecNameAndQuirks> matchingCodecs;
-
-            OMXCodec::findMatchingCodecs(
-                mime.c_str(),
-                encoder, // createEncoder
-                NULL,  // matchComponentName
-                0,     // flags
-                &matchingCodecs);
-
-            err = mCodec->mOMX->freeNode(mCodec->mNode);
-
-            if (err != OK) {
-                ALOGE("Failed to freeNode");
-                mCodec->signalError(OMX_ErrorUndefined, makeNoSideEffectStatus(err));
-                return false;
-            }
-
-            mCodec->mNode = 0;
-            AString componentName;
-            sp<CodecObserver> observer = new CodecObserver;
-
-            err = NAME_NOT_FOUND;
-            for (size_t matchIndex = 0; matchIndex < matchingCodecs.size();
-                    ++matchIndex) {
-                componentName = matchingCodecs.itemAt(matchIndex).mName.string();
-                if (!strcmp(mCodec->mComponentName.c_str(), componentName.c_str())) {
-                    continue;
-                }
-
-                pid_t tid = gettid();
-                int prevPriority = androidGetThreadPriority(tid);
-                androidSetThreadPriority(tid, ANDROID_PRIORITY_FOREGROUND);
-                err = mCodec->mOMX->allocateNode(componentName.c_str(), observer, &mCodec->mNode);
-                androidSetThreadPriority(tid, prevPriority);
-
-                if (err == OK) {
-                    break;
-                } else {
-                    ALOGW("Allocating component '%s' failed, try next one.", componentName.c_str());
-                }
-
-                mCodec->mNode = 0;
-            }
-
-            if (mCodec->mNode == 0) {
-                if (!mime.empty()) {
-                    ALOGE("Unable to instantiate a %scoder for type '%s' with err %#x.",
-                            encoder ? "en" : "de", mime.c_str(), err);
-                } else {
-                    ALOGE("Unable to instantiate codec '%s' with err %#x.", componentName.c_str(), err);
-                }
-
-                mCodec->signalError((OMX_ERRORTYPE)err, makeNoSideEffectStatus(err));
-                return false;
-            }
-
-            sp<AMessage> notify = new AMessage(kWhatOMXMessageList, mCodec);
-            observer->setNotificationMessage(notify);
-            mCodec->mComponentName = componentName;
-
-            err = mCodec->configureCodec(mime.c_str(), msg);
-        }
-
-        if (err != OK) {
-            mCodec->signalError((OMX_ERRORTYPE)err, makeNoSideEffectStatus(err));
-            return false;
-        }
+        mCodec->signalError(OMX_ErrorUndefined, makeNoSideEffectStatus(err));
+        return false;
     }
 
     {
